@@ -29,6 +29,7 @@ library(tidyverse)
 library(janitor)
 library(skimr)
 library(randomForest)
+library(caret)
 
 # Set seed value of random number generator here:
 set.seed(76)
@@ -186,8 +187,37 @@ MiscVal + MoSold + YrSold" %>%
 
 Fit one Random Forest model `model_rf` using any approach you want.
 
-```{r}
+```{r eval=FALSE}
+fit_control <- trainControl(method = "cv", number = 10)
 
+# Setup search grid of "tuning" parameters
+mtry <- 2:15
+tunegrid <- expand.grid(.mtry = mtry)
+
+model_rf_caret <- caret::train(
+  form = model_formula,
+  data = training, 
+  method = "rf",
+  metric = "RMSE",
+  trControl = fit_control,
+  tuneGrid = tunegrid
+  )
+model_rf_caret
+```
+
+* 36 seems to be a large number of variables to predict one outcome, and there are some variables that overlap. Also becasue making R run through `mtry` between 2 to 36 takes forever, I decided to use 15 as an arbitrary number of measures to find the optimal number of predictor variables. 
+* From the results of 10-fold cross validation on 15 features (out of 36), mtry = 14 yielded lowest RMSE. Since the cross validation takes more than 10 minutes to run, I didn't set it to run when knitting.
+
+```{r}
+model_rf <- randomForest(
+  form = model_formula,
+  data = training, 
+  # At each node of tree, number of features/predictor variables to randomly
+  # choose from for splitting:
+  mtry = 14,
+  # Number of bagged (bootstrap aggregated) trees in your forest:
+  ntree = 100 
+)
 ```
 
 
@@ -201,9 +231,19 @@ Fit one Random Forest model `model_rf` using any approach you want.
 Using `model_rf` make predictions and submit to Kaggle.
 
 ```{r}
+test <- test %>% 
+  mutate(
+    logSalePrice_hat_rf = predict(object = model_rf, newdata = test),
+    SalePrice_hat_rf = exp(logSalePrice_hat_rf) -1
+  )
 
+submission_rf <- test %>%
+  mutate(SalePrice = SalePrice_hat_rf) %>%
+  select(Id, SalePrice)
+write_csv(submission_rf, "submission_rf.csv")
 ```
 
 
-![](images/score_screenshot_naive.png){ width=100% }
+![](images/screenshot.jpg){ width=100% }
 
+YAY!!
